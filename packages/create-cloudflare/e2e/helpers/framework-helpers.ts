@@ -1,7 +1,8 @@
 import assert from "assert";
 import { existsSync } from "fs";
-import { cp } from "fs/promises";
+import { setTimeout } from "node:timers/promises";
 import { join } from "path";
+import { runCommand } from "helpers/command";
 import {
 	readFile,
 	readJSON,
@@ -14,32 +15,24 @@ import { retry } from "helpers/retry";
 import { sleep } from "helpers/sleep";
 import * as jsonc from "jsonc-parser";
 import { fetch } from "undici";
-import { beforeAll, describe, expect } from "vitest";
-import { deleteProject, deleteWorker } from "../scripts/common";
-import { getFrameworkMap } from "../src/templates";
-import getFrameworkTestConfig from "./frameworks/framework-test-config";
-import getFrameworkTestConfigExperimental from "./frameworks/framework-test-config-experimental";
-import { getFrameworkToTest } from "./frameworks/framework-to-test";
+import { expect } from "vitest";
+import { version } from "../../package.json";
+import { getFrameworkMap } from "../../src/templates";
 import {
-	isQuarantineMode,
-	kill,
+	CLOUDFLARE_ACCOUNT_ID,
+	CLOUDFLARE_API_TOKEN,
+	E2E_EXPERIMENTAL,
+	E2E_TEST_PM,
 	NO_DEPLOY,
-	recreateLogFolder,
-	runC3,
-	spawnWithLogging,
-	test,
-	TEST_PM,
-	TEST_RETRIES,
-	TEST_TIMEOUT,
-	testDeploymentCommitMessage,
-	testGitCommitMessage,
-} from "./helpers";
-import type { TemplateConfig } from "../src/templates";
-import type { RunnerConfig } from "./helpers";
+} from "./constants";
+import { runC3 } from "./run-c3";
+import { kill, spawnWithLogging } from "./spawn";
+import type { TemplateConfig } from "../../src/templates";
+import type { RunnerConfig } from "./run-c3";
 import type { JsonMap } from "@iarna/toml";
 import type { Writable } from "stream";
 
-type FrameworkTestConfig = RunnerConfig & {
+export type FrameworkTestConfig = RunnerConfig & {
 	testCommitMessage: boolean;
 	nodeCompat: boolean;
 	unsupportedPms?: string[];
@@ -47,152 +40,9 @@ type FrameworkTestConfig = RunnerConfig & {
 	flags?: string[];
 };
 
-const { name: pm } = detectPackageManager();
+const packageManager = detectPackageManager();
 
-function getFrameworkTests(opts: {
-	experimental: boolean;
-}): Record<string, FrameworkTestConfig> {
-	if (opts.experimental) {
-		return getFrameworkTestConfigExperimental();
-	} else {
-		return getFrameworkTestConfig(pm);
-	}
-}
-
-const experimental = process.env.E2E_EXPERIMENTAL === "true";
-const frameworkMap = getFrameworkMap({ experimental });
-const frameworkTests = getFrameworkTests({ experimental });
-
-describe.concurrent(
-	`E2E: Web frameworks (experimental:${experimental})`,
-	() => {
-		beforeAll(async (ctx) => {
-			recreateLogFolder({ experimental }, ctx);
-		});
-
-		Object.entries(frameworkTests).forEach(([frameworkKey, testConfig]) => {
-			const frameworkConfig = {
-				workersTypes: "generated" as const,
-				typesPath: "./worker-configuration.d.ts",
-				envInterfaceName: "Env",
-				...getFrameworkConfig(frameworkKey),
-			};
-			test({ experimental }).runIf(
-				shouldRunTest(frameworkConfig.id, testConfig),
-			)(
-				`${frameworkConfig.id} (${frameworkConfig.platform ?? "pages"})`,
-				{
-					retry: TEST_RETRIES,
-					timeout: testConfig.timeout || TEST_TIMEOUT,
-				},
-				async ({ logStream, project }) => {
-					if (!testConfig.verifyDeploy) {
-						expect(
-							true,
-							"A `deploy` configuration must be defined for all framework tests",
-						).toBe(false);
-						return;
-					}
-
-					try {
-						const deploymentUrl = await runCli(
-							frameworkConfig.id,
-							project.path,
-							logStream,
-							{
-								argv: [
-									...(testConfig.argv ?? []),
-									...(experimental ? ["--experimental"] : []),
-									...(testConfig.testCommitMessage ? ["--git"] : ["--no-git"]),
-									...(testConfig.flags ? ["--", ...testConfig.flags] : []),
-								],
-								promptHandlers: testConfig.promptHandlers,
-							},
-						);
-
-						// Relevant project files should have been created
-						expect(project.path).toExist();
-						const pkgJsonPath = join(project.path, "package.json");
-						expect(pkgJsonPath).toExist();
-
-						// Wrangler should be installed
-						const wranglerPath = join(project.path, "node_modules/wrangler");
-						expect(wranglerPath).toExist();
-
-						await addTestVarsToWranglerToml(project.path);
-
-						if (testConfig.testCommitMessage) {
-							await testGitCommitMessage(
-								project.name,
-								frameworkConfig.id,
-								project.path,
-							);
-						}
-
-						// Make a request to the deployed project and verify it was successful
-						await verifyDeployment(
-							testConfig,
-							frameworkConfig.id,
-							project.name,
-							`${deploymentUrl}${testConfig.verifyDeploy.route}`,
-							testConfig.verifyDeploy.expectedText,
-						);
-
-						// Copy over any platform specific test fixture files
-						const platformFixturePath = join(
-							__dirname,
-							"fixtures",
-							frameworkConfig.id,
-							frameworkConfig.platform,
-						);
-						if (existsSync(platformFixturePath)) {
-							await cp(platformFixturePath, project.path, {
-								recursive: true,
-								force: true,
-							});
-						} else {
-							// Copy over any platform agnostic test fixture files
-							const fixturePath = join(
-								__dirname,
-								"fixtures",
-								frameworkConfig.id,
-							);
-							if (existsSync(fixturePath)) {
-								await cp(fixturePath, project.path, {
-									recursive: true,
-									force: true,
-								});
-							}
-						}
-
-						await verifyPreviewScript(
-							testConfig,
-							frameworkConfig,
-							project.path,
-							logStream,
-						);
-
-						await verifyTypes(testConfig, frameworkConfig, project.path);
-					} catch (e) {
-						console.error("ERROR", e);
-						expect.fail(
-							"Failed due to an exception while running C3. See logs for more details",
-						);
-					} finally {
-						// Cleanup the project in case we need to retry it
-						if (frameworkConfig.platform === "workers") {
-							await deleteWorker(project.name);
-						} else {
-							await deleteProject(project.name);
-						}
-					}
-				},
-			);
-		});
-	},
-);
-
-const runCli = async (
+export async function runC3ForFrameworkTest(
 	framework: string,
 	projectPath: string,
 	logStream: Writable,
@@ -200,7 +50,7 @@ const runCli = async (
 		argv = [],
 		promptHandlers = [],
 	}: Pick<RunnerConfig, "argv" | "promptHandlers">,
-) => {
+) {
 	const args = [
 		projectPath,
 		"--type",
@@ -230,7 +80,7 @@ const runCli = async (
 	}
 
 	return match[1];
-};
+}
 
 /**
  * Either update or create a wrangler configuration file to include a `TEST` var.
@@ -238,7 +88,7 @@ const runCli = async (
  * This is rather than having a wrangler configuration file in the e2e test's fixture folder,
  * which overwrites any that comes from the framework's template.
  */
-const addTestVarsToWranglerToml = async (projectPath: string) => {
+export async function addTestVarsToWranglerToml(projectPath: string) {
 	const wranglerTomlPath = join(projectPath, "wrangler.toml");
 	const wranglerJsoncPath = join(projectPath, "wrangler.jsonc");
 
@@ -257,15 +107,15 @@ const addTestVarsToWranglerToml = async (projectPath: string) => {
 
 		writeJSON(wranglerJsoncPath, wranglerJsonc);
 	}
-};
+}
 
-const verifyDeployment = async (
+export async function verifyDeployment(
 	{ testCommitMessage }: FrameworkTestConfig,
 	frameworkId: string,
 	projectName: string,
 	deploymentUrl: string,
 	expectedText: string,
-) => {
+) {
 	if (NO_DEPLOY) {
 		return;
 	}
@@ -284,14 +134,14 @@ const verifyDeployment = async (
 			);
 		}
 	});
-};
+}
 
-const verifyPreviewScript = async (
+export async function verifyPreviewScript(
 	{ verifyPreview }: FrameworkTestConfig,
 	{ previewScript }: TemplateConfig,
 	projectPath: string,
 	logStream: Writable,
-) => {
+) {
 	if (!verifyPreview) {
 		return;
 	}
@@ -307,10 +157,10 @@ const verifyPreviewScript = async (
 
 	const proc = spawnWithLogging(
 		[
-			pm,
+			packageManager.name,
 			"run",
 			previewScript,
-			...(pm === "npm" ? ["--"] : []),
+			...(packageManager.name === "npm" ? ["--"] : []),
 			...(verifyPreview.previewArgs ?? []),
 			"--port",
 			`${TEST_PORT}`,
@@ -345,9 +195,9 @@ const verifyPreviewScript = async (
 		// end up camped and cause future runs to fail
 		await sleep(1000);
 	}
-};
+}
 
-const verifyTypes = async (
+export async function verifyTypes(
 	{ nodeCompat }: FrameworkTestConfig,
 	{
 		workersTypes,
@@ -355,7 +205,7 @@ const verifyTypes = async (
 		envInterfaceName = "Env",
 	}: TemplateConfig,
 	projectPath: string,
-) => {
+) {
 	if (workersTypes === "none") {
 		return;
 	}
@@ -394,37 +244,31 @@ const verifyTypes = async (
 	if (nodeCompat) {
 		expect(tsconfigTypes).toContain(`node`);
 	}
-};
+}
 
-function shouldRunTest(frameworkId: string, testConfig: FrameworkTestConfig) {
-	const quarantineModeMatch =
-		isQuarantineMode() == (testConfig.quarantine ?? false);
-
-	// If the framework in question is being run in isolation, always run it.
-	// Otherwise, only run the test if it's configured `quarantine` value matches
-	// what is set in E2E_QUARANTINE
-	const frameworkToTest = getFrameworkToTest({ experimental });
-	let shouldRun = frameworkToTest
-		? frameworkToTest === frameworkId
-		: quarantineModeMatch;
-
-	// Skip if the package manager is unsupported
-	shouldRun &&= !testConfig.unsupportedPms?.includes(TEST_PM);
-
-	// Skip if the OS is unsupported
-	shouldRun &&= !testConfig.unsupportedOSs?.includes(process.platform);
-
-	return shouldRun;
+export function shouldRunTest(
+	frameworkId: string,
+	testConfig: FrameworkTestConfig,
+) {
+	return (
+		// Skip if the test is quarantined
+		testConfig.quarantine !== true &&
+		// Skip if the package manager is unsupported
+		!testConfig.unsupportedPms?.includes(E2E_TEST_PM) &&
+		// Skip if the OS is unsupported
+		!testConfig.unsupportedOSs?.includes(process.platform)
+	);
 }
 
 /**
- * Get the framework config and test info given a `frameworkKey`.
+ * Gets the framework config and test info given a `frameworkKey`.
  *
  * Some frameworks support both Pages and Workers platform variants.
  * If so, then the test must specify the variant in its key, of the form
  * `<frameworkId>:<"pages"|"workers">`.
  */
-function getFrameworkConfig(frameworkKey: string) {
+export function getFrameworkConfig(frameworkKey: string) {
+	const frameworkMap = getFrameworkMap({ experimental: E2E_EXPERIMENTAL });
 	const [frameworkId, platformVariant] = frameworkKey.split(":");
 	if ("platformVariants" in frameworkMap[frameworkId]) {
 		assert(
@@ -443,4 +287,79 @@ function getFrameworkConfig(frameworkKey: string) {
 		);
 		return frameworkMap[frameworkId];
 	}
+}
+
+/**
+ * Test that C3 added a git commit with the correct message.
+ */
+export async function testGitCommitMessage(
+	projectName: string,
+	framework: string,
+	projectPath: string,
+) {
+	const commitMessage = await runCommand(["git", "log", "-1"], {
+		silent: true,
+		cwd: projectPath,
+	});
+
+	expect(commitMessage).toMatch(
+		/Initialize web application via create-cloudflare CLI/,
+	);
+	expect(commitMessage).toContain(`C3 = create-cloudflare@${version}`);
+	expect(commitMessage).toContain(`project name = ${projectName}`);
+	expect(commitMessage).toContain(`framework = ${framework}`);
+}
+
+/**
+ * Test that we pushed the commit message to the deployment correctly.
+ */
+export async function testDeploymentCommitMessage(
+	projectName: string,
+	framework: string,
+) {
+	const projectLatestCommitMessage = await retry({ times: 5 }, async () => {
+		// Wait for 2 seconds between each attempt
+		await setTimeout(2000);
+		// Note: we cannot simply run git and check the result since the commit can be part of the
+		//       deployment even without git, so instead we fetch the deployment info from the pages api
+		const response = await fetch(
+			`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`,
+			{
+				headers: {
+					Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+				},
+			},
+		);
+
+		const result = (
+			(await response.json()) as {
+				result: {
+					name: string;
+					latest_deployment?: {
+						deployment_trigger: {
+							metadata?: {
+								commit_message: string;
+							};
+						};
+					};
+				}[];
+			}
+		).result;
+
+		const commitMessage = result.find((project) => project.name === projectName)
+			?.latest_deployment?.deployment_trigger?.metadata?.commit_message;
+		if (!commitMessage) {
+			throw new Error("Could not find deployment with name " + projectName);
+		}
+		return commitMessage;
+	});
+
+	expect(projectLatestCommitMessage).toMatch(
+		/Initialize web application via create-cloudflare CLI/,
+	);
+	expect(projectLatestCommitMessage).toContain(
+		`C3 = create-cloudflare@${version}`,
+	);
+	expect(projectLatestCommitMessage).toContain(`project name = ${projectName}`);
+	expect(projectLatestCommitMessage).toContain(`framework = ${framework}`);
 }
