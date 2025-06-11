@@ -43,6 +43,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Hello, Astronaut!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -67,6 +68,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Hello, Astronaut!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -93,6 +95,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Dinosaurs are cool",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Dinosaurs are cool",
 			},
@@ -121,6 +124,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Dinosaurs are cool",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Dinosaurs are cool",
 			},
@@ -147,6 +151,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "The fullstack meta-framework for Angular!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/api/v1/test",
 				expectedText: "C3_TEST",
 			},
@@ -165,6 +170,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Congratulations! Your app is running.",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Congratulations! Your app is running.",
 			},
@@ -183,6 +189,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Congratulations! Your app is running.",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Congratulations! Your app is running.",
 			},
@@ -206,6 +213,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Gatsby!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Gatsby!",
 			},
@@ -228,6 +236,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Gatsby!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Gatsby!",
 			},
@@ -243,6 +252,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Hello!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Hello!",
 			},
@@ -264,6 +274,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Hello Hono!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/message",
 				expectedText: "Hello Hono!",
 			},
@@ -292,6 +303,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Welcome to Qwik",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Welcome to Qwik",
 			},
@@ -315,6 +327,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Welcome to Qwik",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Welcome to Qwik",
 			},
@@ -332,6 +345,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Welcome to Remix",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -350,6 +364,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Welcome to Remix",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -368,6 +383,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 			// see https://github.com/cloudflare/next-on-pages/blob/main/packages/next-on-pages/docs/supported.md#operating-systems
 			unsupportedOSs: ["win32"],
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Create Next App",
 			},
@@ -381,7 +397,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 			testCommitMessage: true,
 			flags: ["--yes", "--import-alias", "@/*"],
 			verifyPreview: {
-				previewArgs: ["--"],
+				previewArgs: ["--inspector-port=0", "--"],
 				route: "/test",
 				expectedText: "Create Next App",
 			},
@@ -417,6 +433,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 			},
 			nodeCompat: false,
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -439,6 +456,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Welcome to Nuxt!",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -461,6 +479,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Vite + React",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Vite + React",
 			},
@@ -514,6 +533,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Hello world",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Hello world",
 			},
@@ -538,6 +558,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "SvelteKit app",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -562,6 +583,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "SvelteKit app",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/test",
 				expectedText: "C3_TEST",
 			},
@@ -577,6 +599,7 @@ function getFrameworkTestConfig(pm: string): NamedFrameworkTestConfig[] {
 				expectedText: "Vite App",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Vite App",
 			},
@@ -625,6 +648,7 @@ function getExperimentalFrameworkTestConfig() {
 				expectedText: "Hello world",
 			},
 			verifyPreview: {
+				previewArgs: ["--inspector-port=0"],
 				route: "/",
 				expectedText: "Hello world",
 			},

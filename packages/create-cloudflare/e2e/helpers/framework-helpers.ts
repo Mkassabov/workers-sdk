@@ -155,7 +155,6 @@ export async function verifyPreviewScript(
 
 	// Run the dev-server on random ports to avoid colliding with other tests
 	const port = await getPort();
-	const inspectorPort = await getPort();
 
 	const proc = spawnWithLogging(
 		[
@@ -166,8 +165,6 @@ export async function verifyPreviewScript(
 			...(verifyPreview.previewArgs ?? []),
 			"--port",
 			`${port}`,
-			"--inspector-port",
-			`${inspectorPort}`,
 		],
 		{
 			cwd: projectPath,
