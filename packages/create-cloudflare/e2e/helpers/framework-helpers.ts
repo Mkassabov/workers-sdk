@@ -38,6 +38,7 @@ export type FrameworkTestConfig = RunnerConfig & {
 	unsupportedPms?: string[];
 	unsupportedOSs?: string[];
 	flags?: string[];
+	extraEnv?: Record<string, string | undefined>;
 };
 
 const packageManager = detectPackageManager();
@@ -49,7 +50,8 @@ export async function runC3ForFrameworkTest(
 	{
 		argv = [],
 		promptHandlers = [],
-	}: Pick<RunnerConfig, "argv" | "promptHandlers">,
+		extraEnv,
+	}: Pick<FrameworkTestConfig, "argv" | "promptHandlers" | "extraEnv">,
 ) {
 	const args = [
 		projectPath,
@@ -65,7 +67,7 @@ export async function runC3ForFrameworkTest(
 
 	args.push(...argv);
 
-	const { output } = await runC3(args, promptHandlers, logStream);
+	const { output } = await runC3(args, promptHandlers, logStream, extraEnv);
 	if (!runDeployTests) {
 		return null;
 	}
