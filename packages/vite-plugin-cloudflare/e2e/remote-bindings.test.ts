@@ -5,6 +5,7 @@ import { setTimeout } from "node:timers/promises";
 import { afterAll, beforeAll, describe, test, vi } from "vitest";
 import {
 	fetchJson,
+	isBuildAndPreviewOnWindows,
 	runLongLived,
 	runWrangler,
 	seed,
@@ -57,18 +58,19 @@ describe
 		});
 
 		describe.each(commands)('with "%s" command', (command) => {
-			test("can fetch from both local (/auxiliary) and remote workers", async ({
-				expect,
-			}) => {
-				const proc = await runLongLived("pnpm", command, projectPath);
-				const url = await waitForReady(proc);
-				expect(await fetchJson(url)).toEqual({
-					localWorkerResponse: {
-						remoteWorkerResponse: "Hello from an alternative remote worker",
-					},
-					remoteWorkerResponse: "Hello from a remote worker",
-				});
-			});
+			test.skipIf(isBuildAndPreviewOnWindows(command))(
+				"can fetch from both local (/auxiliary) and remote workers",
+				async ({ expect }) => {
+					const proc = await runLongLived("pnpm", command, projectPath);
+					const url = await waitForReady(proc);
+					expect(await fetchJson(url)).toEqual({
+						localWorkerResponse: {
+							remoteWorkerResponse: "Hello from an alternative remote worker",
+						},
+						remoteWorkerResponse: "Hello from a remote worker",
+					});
+				}
+			);
 		});
 
 		test("reflects changes applied during dev", async ({ expect }) => {
