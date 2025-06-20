@@ -2,6 +2,7 @@ import assert from "assert";
 import { existsSync } from "fs";
 import { setTimeout } from "node:timers/promises";
 import { join } from "path";
+import getPort from "get-port";
 import { runCommand } from "helpers/command";
 import {
 	readFile,
