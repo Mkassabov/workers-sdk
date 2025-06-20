@@ -1,7 +1,9 @@
 import assert from "node:assert";
 import path from "node:path";
+import { isDockerfile } from "@cloudflare/containers-shared";
 import { watch } from "chokidar";
 import { getAssetsOptions, validateAssetsArgsAndConfig } from "../../assets";
+import { fillOpenAPIConfiguration } from "../../cloudchamber/common";
 import { readConfig } from "../../config";
 import { getEntry } from "../../deployment-bundle/entry";
 import {
@@ -12,9 +14,13 @@ import {
 } from "../../dev";
 import { getClassNamesWhichUseSQLite } from "../../dev/class-names-sqlite";
 import { getLocalPersistencePath } from "../../dev/get-local-persistence-path";
-import { getDockerPath } from "../../environment-variables/misc-variables";
+import {
+	getDockerHost,
+	getDockerPath,
+} from "../../environment-variables/misc-variables";
 import { UserError } from "../../errors";
 import { getFlag } from "../../experimental-flags";
+import { isNonInteractiveOrCI } from "../../is-interactive";
 import { logger, runWithLogLevel } from "../../logger";
 import { checkTypesDiff } from "../../type-generation/helpers";
 import {
@@ -49,7 +55,6 @@ import type {
 	StartDevWorkerOptions,
 	Trigger,
 } from "./types";
-import type { WorkerOptions } from "miniflare";
 
 type ConfigControllerEventMap = ControllerEventMap & {
 	configUpdate: [ConfigUpdateEvent];
@@ -128,12 +133,15 @@ async function resolveDevConfig(
 			httpsKeyPath: input.dev?.server?.httpsKeyPath,
 			httpsCertPath: input.dev?.server?.httpsCertPath,
 		},
-		inspector: {
-			port:
-				input.dev?.inspector?.port ??
-				config.dev.inspector_port ??
-				(await getInspectorPort()),
-		},
+		inspector:
+			input.dev?.inspector === false
+				? false
+				: {
+						port:
+							input.dev?.inspector?.port ??
+							config.dev.inspector_port ??
+							(await getInspectorPort()),
+					},
 		origin: {
 			secure:
 				input.dev?.origin?.secure ?? config.dev.upstream_protocol === "https",
@@ -147,11 +155,13 @@ async function resolveDevConfig(
 		bindVectorizeToProd: input.dev?.bindVectorizeToProd ?? false,
 		multiworkerPrimary: input.dev?.multiworkerPrimary,
 		imagesLocalMode: input.dev?.imagesLocalMode ?? false,
-		experimentalMixedMode:
-			input.dev?.experimentalMixedMode ?? getFlag("MIXED_MODE"),
+		experimentalRemoteBindings:
+			input.dev?.experimentalRemoteBindings ?? getFlag("REMOTE_BINDINGS"),
 		enableContainers:
 			input.dev?.enableContainers ?? config.dev.enable_containers,
 		dockerPath: input.dev?.dockerPath ?? getDockerPath(),
+		containerEngine: input.dev?.containerEngine ?? getDockerHost(),
+		containerBuildId: input.dev?.containerBuildId,
 	} satisfies StartDevWorkerOptions["dev"];
 }
 
@@ -184,7 +194,7 @@ async function resolveBindings(
 				input.bindings
 			)?.[0],
 		},
-		input.dev?.experimentalMixedMode
+		input.dev?.experimentalRemoteBindings
 	);
 
 	const maskedVars = maskVars(bindings, config);
@@ -334,7 +344,7 @@ async function resolveConfig(
 			tsconfig: input.build?.tsconfig ?? config.tsconfig,
 			exports: entry.exports,
 		},
-		containers: resolveContainerConfig(config),
+		containers: config.containers,
 		dev: await resolveDevConfig(config, input),
 		legacy: {
 			site: legacySite,
@@ -352,7 +362,7 @@ async function resolveConfig(
 	if (
 		extractBindingsOfType("browser", resolved.bindings).length &&
 		!resolved.dev.remote &&
-		!getFlag("MIXED_MODE")
+		!getFlag("REMOTE_BINDINGS")
 	) {
 		logger.warn(
 			"Browser Rendering is not supported locally. Please use `wrangler dev --remote` instead."
@@ -393,6 +403,16 @@ async function resolveConfig(
 		);
 	}
 
+	// for pulling containers, we need to make sure the OpenAPI config for the
+	// container API client is properly set so that we can get the correct permissions
+	// from the cloudchamber API to pull from the repository.
+	const needsPulling = resolved.containers?.some(
+		(c) => !isDockerfile(c.image ?? c.configuration.image)
+	);
+	if (needsPulling && !resolved.dev.remote) {
+		await fillOpenAPIConfiguration(config, isNonInteractiveOrCI());
+	}
+
 	// TODO(queues) support remote wrangler dev
 	const queues = extractBindingsOfType("queue", resolved.bindings);
 	if (
@@ -423,23 +443,6 @@ async function resolveConfig(
 	}
 
 	return resolved;
-}
-
-// TODO: move to containers-shared and use to merge config and args for container commands too
-function resolveContainerConfig(
-	config: Config
-): StartDevWorkerOptions["containers"] {
-	const containers: WorkerOptions["containers"] = {};
-	for (const container of config.containers ?? []) {
-		containers[container.class_name] = {
-			image: container.image ?? container.configuration.image,
-			maxInstances: container.max_instances,
-			imageBuildContext: container.image_build_context,
-			exposedPorts: container.dev_exposed_ports,
-			name: container.name,
-		};
-	}
-	return containers;
 }
 
 export class ConfigController extends Controller<ConfigControllerEventMap> {

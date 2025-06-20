@@ -264,8 +264,9 @@ export const versionsUploadCommand = createCommand({
 		overrideExperimentalFlags: (args) => ({
 			MULTIWORKER: false,
 			RESOURCES_PROVISION: args.experimentalProvision ?? false,
-			MIXED_MODE: false,
+			REMOTE_BINDINGS: args.experimentalRemoteBindings ?? false,
 		}),
+		warnIfMultipleEnvsConfiguredButNoneSpecified: true,
 	},
 	handler: async function versionsUploadHandler(args, { config }) {
 		const entry = await getEntry(args, config, "versions upload");

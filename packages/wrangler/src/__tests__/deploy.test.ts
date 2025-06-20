@@ -1,10 +1,13 @@
 import { Buffer } from "node:buffer";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomFillSync } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PassThrough, Writable } from "node:stream";
-import { DOMAIN } from "@cloudflare/containers-shared";
+import {
+	getCloudflareContainerRegistry,
+	SchedulingPolicy,
+} from "@cloudflare/containers-shared";
 import * as TOML from "@iarna/toml";
 import { sync } from "command-exists";
 import * as esbuild from "esbuild";
@@ -8665,7 +8668,7 @@ addEventListener('fetch', event => {});`
 			});
 
 			it("should support durable object bindings to SQLite classes with containers (docker flow)", async () => {
-				vi.stubEnv("WRANGLER_CONTAINERS_DOCKER_PATH", "/usr/bin/docker");
+				vi.stubEnv("WRANGLER_DOCKER_BIN", "/usr/bin/docker");
 				function mockGetVersion(versionId: string) {
 					msw.use(
 						http.get(
@@ -8708,6 +8711,28 @@ addEventListener('fetch', event => {});`
 						},
 					} as unknown as ChildProcess;
 				}
+				vi.mocked(execFile)
+					// docker images first call
+					.mockImplementationOnce((cmd, args, callback) => {
+						expect(cmd).toBe("/usr/bin/docker");
+						expect(args).toEqual([
+							"images",
+							"--digests",
+							"--format",
+							"{{.Digest}}",
+							getCloudflareContainerRegistry() +
+								"/test_account_id/my-container:Galaxy",
+						]);
+						if (callback) {
+							const back = callback as (
+								error: Error | null,
+								stdout: string,
+								stderr: string
+							) => void;
+							back(null, "three\n", "");
+						}
+						return {} as ChildProcess;
+					});
 
 				vi.mocked(spawn)
 					// 1. docker build
@@ -8716,9 +8741,11 @@ addEventListener('fetch', event => {});`
 						expect(args).toEqual([
 							"build",
 							"-t",
-							DOMAIN + "/my-container:Galaxy",
+							getCloudflareContainerRegistry() +
+								"/test_account_id/my-container:Galaxy",
 							"--platform",
 							"linux/amd64",
+							"--provenance=false",
 							"-f",
 							"-",
 							".",
@@ -8754,7 +8781,7 @@ addEventListener('fetch', event => {});`
 						expect(args).toEqual([
 							"image",
 							"inspect",
-							`${DOMAIN}/my-container:Galaxy`,
+							`${getCloudflareContainerRegistry()}/test_account_id/my-container:Galaxy`,
 							"--format",
 							"{{ .Size }} {{ len .RootFS.Layers }}",
 						]);
@@ -8807,10 +8834,46 @@ addEventListener('fetch', event => {});`
 							},
 						} as unknown as ChildProcess;
 					})
-					// 4. docker push
+					// 4. docker manifest inspect
 					.mockImplementationOnce((cmd, args) => {
 						expect(cmd).toBe("/usr/bin/docker");
-						expect(args).toEqual(["push", `${DOMAIN}/my-container:Galaxy`]);
+						expect(args[0]).toBe("manifest");
+						expect(args[1]).toBe("inspect");
+						expect(args[2]).toEqual("my-container@three");
+						expect(args).toEqual([
+							"manifest",
+							"inspect",
+							`${getCloudflareContainerRegistry()}/test_account_id/my-container@three`,
+						]);
+						const readable = new Writable({
+							write() {},
+							final() {},
+						});
+						return {
+							stdout: Buffer.from(
+								"i promise I am an unsuccessful docker manifest call"
+							),
+							stdin: readable,
+							on: function (
+								reason: string,
+								cbPassed: (code: number) => unknown
+							) {
+								if (reason === "close") {
+									// We always fail this for this test because this is meant to stop
+									// us pushing if it succeeds and we want to go through the push workflow also
+									cbPassed(1);
+								}
+								return this;
+							},
+						} as unknown as ChildProcess;
+					})
+					// 5. docker push
+					.mockImplementationOnce((cmd, args) => {
+						expect(cmd).toBe("/usr/bin/docker");
+						expect(args).toEqual([
+							"push",
+							`${getCloudflareContainerRegistry()}/test_account_id/my-container:Galaxy`,
+						]);
 						return defaultChildProcess();
 					});
 
@@ -8860,15 +8923,15 @@ addEventListener('fetch', event => {});`
 				function mockGenerateImageRegistryCredentials() {
 					msw.use(
 						http.post(
-							`*/registries/${DOMAIN}/credentials`,
+							`*/registries/${getCloudflareContainerRegistry()}/credentials`,
 							async ({ request }) => {
 								const json =
 									(await request.json()) as ImageRegistryCredentialsConfiguration;
-								expect(json.permissions).toEqual(["push"]);
+								expect(json.permissions).toEqual(["push", "pull"]);
 
 								return HttpResponse.json({
-									account_id: "123",
-									registry_host: DOMAIN,
+									account_id: "test_account_id",
+									registry_host: getCloudflareContainerRegistry(),
 									username: "v1",
 									password: "mockpassword",
 								} as AccountRegistryToken);
@@ -8885,7 +8948,9 @@ addEventListener('fetch', event => {});`
 					instances: 10,
 					durable_objects: { namespace_id: "1" },
 					configuration: {
-						image: DOMAIN + "/my-container:Galaxy",
+						image:
+							getCloudflareContainerRegistry() +
+							"/test_account_id/my-container:Galaxy",
 					},
 				});
 
@@ -8922,6 +8987,7 @@ addEventListener('fetch', event => {});`
 
 					Uploaded test-name (TIMINGS)
 					Building image my-container:Galaxy
+					Image does not exist remotely, pushing: registry.cloudflare.com/test_account_id/my-container:Galaxy
 					Deployed test-name triggers (TIMINGS)
 					  https://test-name.test-sub-domain.workers.dev
 					Current Version ID: Galaxy-Class"
@@ -9066,6 +9132,7 @@ addEventListener('fetch', event => {});`
 					name: "my-container",
 					instances: 10,
 					durable_objects: { namespace_id: "1" },
+					scheduling_policy: SchedulingPolicy.DEFAULT,
 				});
 
 				fs.writeFileSync(
@@ -12998,6 +13065,65 @@ export default{
 			mockGetWorkerSubdomain({ enabled: true });
 
 			await runWrangler("deploy ./index.js");
+		});
+	});
+
+	describe("multi-env warning", () => {
+		it("should warn if the wrangler config contains environments but none was specified in the command", async () => {
+			writeWorkerSource();
+			writeWranglerConfig({
+				main: "./index.js",
+				env: {
+					test: {},
+				},
+			});
+			mockSubDomainRequest();
+			mockUploadWorkerRequest();
+
+			await runWrangler("deploy");
+
+			expect(std.warn).toMatchInlineSnapshot(`
+				"[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mMultiple environments are defined in the Wrangler configuration file, but no target environment was specified for the deploy command.[0m
+
+				  To avoid unintentional changes to the wrong environment, it is recommended to explicitly specify
+				  the target environment using the \`-e|--env\` flag.
+				  If your intention is to use the top-level environment of your configuration simply pass an empty
+				  string to the flag to target such environment. For example \`--env=\\"\\"\`.
+
+				"
+			`);
+		});
+
+		it("should not warn if the wrangler config contains environments and one was specified in the command", async () => {
+			writeWorkerSource();
+			writeWranglerConfig({
+				main: "./index.js",
+				env: {
+					test: {},
+				},
+			});
+			mockSubDomainRequest();
+			mockUploadWorkerRequest({
+				env: "test",
+				legacyEnv: true,
+			});
+
+			await runWrangler("deploy -e test");
+
+			expect(std.warn).toMatchInlineSnapshot(`""`);
+		});
+
+		it("should not warn if the wrangler config doesn't contain environments and none was specified in the command", async () => {
+			writeWorkerSource();
+			writeWranglerConfig({
+				main: "./index.js",
+			});
+			mockSubDomainRequest();
+			mockUploadWorkerRequest();
+
+			await runWrangler("deploy");
+
+			expect(std.warn).toMatchInlineSnapshot(`""`);
 		});
 	});
 });

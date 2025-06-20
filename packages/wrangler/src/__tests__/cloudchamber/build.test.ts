@@ -3,12 +3,12 @@ import {
 	dockerBuild,
 	dockerImageInspect,
 	dockerLoginManagedRegistry,
-	DOMAIN,
+	getCloudflareContainerRegistry,
+	getDockerImageDigest,
 	runDockerCmd,
 } from "@cloudflare/containers-shared";
 import { ensureDiskLimits } from "../../cloudchamber/build";
 import { resolveAppDiskSize } from "../../cloudchamber/common";
-import { isDockerfile } from "../../cloudchamber/deploy";
 import { type ContainerApp } from "../../config/environment";
 import { UserError } from "../../errors";
 import { mockAccountId, mockApiToken } from "../helpers/mock-account-id";
@@ -31,6 +31,7 @@ vi.mock("@cloudflare/containers-shared", async (importOriginal) => {
 		runDockerCmd: vi.fn(),
 		dockerBuild: vi.fn(),
 		dockerImageInspect: vi.fn(),
+		getDockerImageDigest: vi.fn(),
 	});
 });
 
@@ -46,6 +47,7 @@ describe("buildAndMaybePush", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(dockerImageInspect).mockResolvedValue("53387881 2");
+		vi.mocked(getDockerImageDigest).mockRejectedValue("failed");
 		mkdirSync("./container-context");
 
 		writeFileSync("./container-context/Dockerfile", dockerfile);
@@ -55,7 +57,7 @@ describe("buildAndMaybePush", () => {
 	});
 
 	it("should use a custom docker path if provided", async () => {
-		vi.stubEnv("WRANGLER_CONTAINERS_DOCKER_PATH", "/custom/docker/path");
+		vi.stubEnv("WRANGLER_DOCKER_BIN", "/custom/docker/path");
 		await runWrangler(
 			"containers build ./container-context -t test-app:tag -p"
 		);
@@ -63,9 +65,10 @@ describe("buildAndMaybePush", () => {
 			buildCmd: [
 				"build",
 				"-t",
-				`${DOMAIN}/test-app:tag`,
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 				"--platform",
 				"linux/amd64",
+				"--provenance=false",
 				"-f",
 				"-",
 				"./container-context",
@@ -73,12 +76,12 @@ describe("buildAndMaybePush", () => {
 			dockerfile,
 		});
 		expect(dockerImageInspect).toHaveBeenCalledWith("/custom/docker/path", {
-			imageTag: `${DOMAIN}/test-app:tag`,
+			imageTag: `${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 			formatString: "{{ .Size }} {{ len .RootFS.Layers }}",
 		});
 		expect(runDockerCmd).toHaveBeenCalledWith("/custom/docker/path", [
 			"push",
-			`${DOMAIN}/test-app:tag`,
+			`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 		]);
 		expect(dockerLoginManagedRegistry).toHaveBeenCalledWith(
 			"/custom/docker/path"
@@ -93,9 +96,10 @@ describe("buildAndMaybePush", () => {
 			buildCmd: [
 				"build",
 				"-t",
-				`${DOMAIN}/test-app:tag`,
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 				"--platform",
 				"linux/amd64",
+				"--provenance=false",
 				"-f",
 				"-",
 				"./container-context",
@@ -105,11 +109,55 @@ describe("buildAndMaybePush", () => {
 		expect(runDockerCmd).toHaveBeenCalledTimes(1);
 		expect(runDockerCmd).toHaveBeenCalledWith("docker", [
 			"push",
-			`${DOMAIN}/test-app:tag`,
+			`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 		]);
 		expect(dockerImageInspect).toHaveBeenCalledOnce();
 		expect(dockerImageInspect).toHaveBeenCalledWith("docker", {
-			imageTag: `${DOMAIN}/test-app:tag`,
+			imageTag: `${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
+			formatString: "{{ .Size }} {{ len .RootFS.Layers }}",
+		});
+		expect(dockerLoginManagedRegistry).toHaveBeenCalledOnce();
+	});
+
+	it("should be able to build image and not push if it already exists in remote", async () => {
+		vi.mocked(getDockerImageDigest).mockResolvedValue("three");
+		vi.mocked(runDockerCmd).mockResolvedValueOnce();
+		await runWrangler(
+			"containers build ./container-context -t test-app:tag -p"
+		);
+		expect(dockerBuild).toHaveBeenCalledWith("docker", {
+			buildCmd: [
+				"build",
+				"-t",
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
+				"--platform",
+				"linux/amd64",
+				"--provenance=false",
+				"-f",
+				"-",
+				"./container-context",
+			],
+			dockerfile,
+		});
+		expect(runDockerCmd).toHaveBeenCalledTimes(2);
+		expect(runDockerCmd).toHaveBeenNthCalledWith(
+			1,
+			"docker",
+			[
+				"manifest",
+				"inspect",
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app@three`,
+			],
+			"ignore"
+		);
+		expect(runDockerCmd).toHaveBeenNthCalledWith(2, "docker", [
+			"image",
+			"rm",
+			`${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
+		]);
+		expect(dockerImageInspect).toHaveBeenCalledOnce();
+		expect(dockerImageInspect).toHaveBeenCalledWith("docker", {
+			imageTag: `${getCloudflareContainerRegistry()}/test_account_id/test-app:tag`,
 			formatString: "{{ .Size }} {{ len .RootFS.Layers }}",
 		});
 		expect(dockerLoginManagedRegistry).toHaveBeenCalledOnce();
@@ -122,9 +170,10 @@ describe("buildAndMaybePush", () => {
 			buildCmd: [
 				"build",
 				"-t",
-				`${DOMAIN}/test-app`,
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app`,
 				"--platform",
 				"linux/amd64",
+				"--provenance=false",
 				"-f",
 				"-",
 				"./container-context",
@@ -143,9 +192,10 @@ describe("buildAndMaybePush", () => {
 			buildCmd: [
 				"build",
 				"-t",
-				`${DOMAIN}/test-app`,
+				`${getCloudflareContainerRegistry()}/test_account_id/test-app`,
 				"--platform",
 				"linux/amd64",
+				"--provenance=false",
 				"--network",
 				"host",
 				"-f",
@@ -173,43 +223,6 @@ describe("buildAndMaybePush", () => {
 		await expect(
 			runWrangler("containers build ./container-context -t test-app:tag -p")
 		).rejects.toThrow(new UserError(errorMessage));
-	});
-
-	describe("isDockerfile", () => {
-		it("should return true if given a valid dockerfile path", async () => {
-			expect(isDockerfile("./container-context/Dockerfile")).toBe(true);
-		});
-		it("should return false if given a valid image registry path", async () => {
-			expect(isDockerfile("docker.io/httpd:1")).toBe(false);
-		});
-
-		it("should error if given a non existant dockerfile", async () => {
-			expect(() => isDockerfile("./FakeDockerfile"))
-				.toThrowErrorMatchingInlineSnapshot(`
-					[Error: The image "./FakeDockerfile" does not appear to be a valid path to a Dockerfile, or a valid image registry path:
-					If this is an image registry path, it needs to include at least a tag ':' (e.g: docker.io/httpd:1)]
-				`);
-		});
-		it("should error if given a directory instead of a dockerfile", async () => {
-			expect(() => isDockerfile("./container-context"))
-				.toThrowErrorMatchingInlineSnapshot(`
-				[Error: ./container-context is a directory, you should specify a path to the Dockerfile]
-			`);
-		});
-		it("should error if image registry reference contains the protocol part", async () => {
-			expect(() => isDockerfile("http://example.com/image:tag"))
-				.toThrowErrorMatchingInlineSnapshot(`
-					[Error: The image "http://example.com/image:tag" does not appear to be a valid path to a Dockerfile, or a valid image registry path:
-					Image reference should not include the protocol part (e.g: docker.io/httpd:1, not https://docker.io/httpd:1)]
-				`);
-		});
-		it("should error if image registry reference does not contain a tag", async () => {
-			expect(() => isDockerfile("docker.io/httpd"))
-				.toThrowErrorMatchingInlineSnapshot(`
-					[Error: The image "docker.io/httpd" does not appear to be a valid path to a Dockerfile, or a valid image registry path:
-					If this is an image registry path, it needs to include at least a tag ':' (e.g: docker.io/httpd:1)]
-				`);
-		});
 	});
 
 	describe("ensureDiskLimits", () => {

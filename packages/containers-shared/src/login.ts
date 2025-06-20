@@ -1,24 +1,37 @@
 import { spawn } from "node:child_process";
 import { ImageRegistriesService, ImageRegistryPermissions } from "./client";
-import { DOMAIN } from "./constants";
+import { getCloudflareContainerRegistry } from "./knobs";
 
 /**
- * Gets push credentials for cloudflare's managed image registry
- * and runs `docker login`, so subsequent image pushes are authenticated
+ * Gets push and pull credentials for Cloudflare's managed image registry
+ * and runs `docker login`, so subsequent image pushes or pulls are
+ * authenticated
  */
 export async function dockerLoginManagedRegistry(pathToDocker: string) {
 	// how long the credentials should be valid for
 	const expirationMinutes = 15;
 
 	const credentials =
-		await ImageRegistriesService.generateImageRegistryCredentials(DOMAIN, {
-			expiration_minutes: expirationMinutes,
-			permissions: ["push"] as ImageRegistryPermissions[],
-		});
+		await ImageRegistriesService.generateImageRegistryCredentials(
+			getCloudflareContainerRegistry(),
+			{
+				expiration_minutes: expirationMinutes,
+				permissions: [
+					ImageRegistryPermissions.PUSH,
+					ImageRegistryPermissions.PULL,
+				],
+			}
+		);
 
 	const child = spawn(
 		pathToDocker,
-		["login", "--password-stdin", "--username", "v1", DOMAIN],
+		[
+			"login",
+			"--password-stdin",
+			"--username",
+			"v1",
+			getCloudflareContainerRegistry(),
+		],
 		{ stdio: ["pipe", "inherit", "inherit"] }
 	).on("error", (err) => {
 		throw err;
