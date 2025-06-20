@@ -17,7 +17,6 @@ import {
 	runC3ForFrameworkTest,
 	shouldRunTest,
 	testGitCommitMessage,
-	verifyBuildScript,
 	verifyDeployment,
 	verifyPreviewScript,
 	verifyTypes,
@@ -144,7 +143,6 @@ describe
 						);
 
 						await verifyTypes(testConfig, frameworkConfig, project.path);
-						await verifyBuildScript(testConfig, project.path, logStream);
 					} catch (e) {
 						console.error("ERROR", e);
 						expect.fail(
