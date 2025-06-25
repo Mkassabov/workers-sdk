@@ -965,14 +965,7 @@ importers:
         version: link:../../packages/wrangler
 
   fixtures/shared:
-    optionalDependencies:
-      '@cdktf/node-pty-prebuilt-multiarch':
-        specifier: 0.10.1-pre.11
-        version: 0.10.1-pre.11
     devDependencies:
-      strip-ansi:
-        specifier: ^7.1.0
-        version: 7.1.0
       wrangler:
         specifier: workspace:*
         version: link:../../packages/wrangler
