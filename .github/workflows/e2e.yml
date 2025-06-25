@@ -5,6 +5,9 @@ on:
     types: [synchronize, opened, reopened, labeled, unlabeled]
   repository_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   e2e-test-vp:
     name: "E2E tests"
