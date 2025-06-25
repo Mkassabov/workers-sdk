@@ -288,67 +288,68 @@ it.each(exitKeys)("multiworker cleanly exits with $name", async ({ key }) => {
 	}
 });
 
-baseDescribe.skipIf(
-	process.env.platform !== "linux" && process.env.CI === "true"
-)("container dev", { retry: 1, timeout: 20000 }, () => {
-	let tmpDir: string;
-	let wrangler: PtyProcess;
-	beforeAll(async () => {
-		tmpDir = fs.mkdtempSync(path.join(tmpdir(), "wrangler-container-"));
-		fs.cpSync(
-			path.resolve(__dirname, "..", "container-app"),
-			path.join(tmpDir),
-			{
-				recursive: true,
+baseDescribe.skipIf(process.platform !== "linux" && process.env.CI === "true")(
+	"container dev",
+	{ retry: 1, timeout: 20000 },
+	() => {
+		let tmpDir: string;
+		let wrangler: PtyProcess;
+		beforeAll(async () => {
+			tmpDir = fs.mkdtempSync(path.join(tmpdir(), "wrangler-container-"));
+			fs.cpSync(
+				path.resolve(__dirname, "..", "container-app"),
+				path.join(tmpDir),
+				{
+					recursive: true,
+				}
+			);
+			const ids = getContainerIds();
+			if (ids.length > 0) {
+				execSync("docker rm -f " + ids.join(" "), {
+					encoding: "utf8",
+				});
 			}
-		);
-		const ids = getContainerIds();
-		if (ids.length > 0) {
-			execSync("docker rm -f " + ids.join(" "), {
-				encoding: "utf8",
-			});
-		}
-		wrangler = await startWranglerDev(["dev", "--cwd", "./container-app"]);
-	});
-	afterAll(async () => {
-		const ids = getContainerIds();
-		if (ids.length > 0) {
-			execSync("docker rm -f " + ids.join(" "), {
-				encoding: "utf8",
-			});
-		}
+			wrangler = await startWranglerDev(["dev", "--cwd", "./container-app"]);
+		});
+		afterAll(async () => {
+			const ids = getContainerIds();
+			if (ids.length > 0) {
+				execSync("docker rm -f " + ids.join(" "), {
+					encoding: "utf8",
+				});
+			}
 
-		try {
-			fs.rmSync(tmpDir, { recursive: true, force: true });
-		} catch (e) {
-			// It seems that Windows doesn't let us delete this, with errors like:
-			//
-			// Error: EBUSY: resource busy or locked, rmdir 'C:\Users\RUNNER~1\AppData\Local\Temp\wrangler-modules-pKJ7OQ'
-			// ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-			// Serialized Error: {
-			// 	"code": "EBUSY",
-			// 	"errno": -4082,
-			// 	"path": "C:\Users\RUNNER~1\AppData\Local\Temp\wrangler-modules-pKJ7OQ",
-			// 	"syscall": "rmdir",
-			// }
-			console.error(e);
-		}
-	});
+			try {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			} catch (e) {
+				// It seems that Windows doesn't let us delete this, with errors like:
+				//
+				// Error: EBUSY: resource busy or locked, rmdir 'C:\Users\RUNNER~1\AppData\Local\Temp\wrangler-modules-pKJ7OQ'
+				// ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+				// Serialized Error: {
+				// 	"code": "EBUSY",
+				// 	"errno": -4082,
+				// 	"path": "C:\Users\RUNNER~1\AppData\Local\Temp\wrangler-modules-pKJ7OQ",
+				// 	"syscall": "rmdir",
+				// }
+				console.error(e);
+			}
+		});
 
-	it("should rebuild a container when the hotkey is pressed", async () => {
-		console.log("initial url", wrangler.url);
-		await fetch(wrangler.url + "/start");
+		it("should rebuild a container when the hotkey is pressed", async () => {
+			console.log("initial url", wrangler.url);
+			await fetch(wrangler.url + "/start");
 
-		await new Promise((resolve) => setTimeout(resolve, 1500));
+			await new Promise((resolve) => setTimeout(resolve, 1500));
 
-		let status = await fetch(wrangler.url + "/status");
-		expect(await status.json()).toBe(true);
-		let res = await fetch(wrangler.url + "/fetch");
-		expect(await res.text()).toBe("Hello World! FOO");
+			let status = await fetch(wrangler.url + "/status");
+			expect(await status.json()).toBe(true);
+			let res = await fetch(wrangler.url + "/fetch");
+			expect(await res.text()).toBe("Hello World! FOO");
 
-		fs.writeFileSync(
-			path.join(tmpDir, "container-src", "simple-node-app.js"),
-			`const { createServer } = require("http");
+			fs.writeFileSync(
+				path.join(tmpDir, "container-src", "simple-node-app.js"),
+				`const { createServer } = require("http");
 
 			// Create HTTP server
 			const server = createServer(function (req, res) {
@@ -360,31 +361,32 @@ baseDescribe.skipIf(
 			server.listen(8080, function () {
 				console.log("Server listening on port 8080");
 			});`,
-			"utf-8"
-		);
+				"utf-8"
+			);
 
-		wrangler.pty.write("r");
+			wrangler.pty.write("r");
 
-		await new Promise((resolve) => setTimeout(resolve, 5000));
+			await new Promise((resolve) => setTimeout(resolve, 5000));
 
-		status = await fetch(wrangler.url + "/status");
-		expect(await status.json()).toBe(false);
+			status = await fetch(wrangler.url + "/status");
+			expect(await status.json()).toBe(false);
 
-		await fetch(wrangler.url + "/start");
-		await new Promise((resolve) => setTimeout(resolve, 2000));
-		// 			await new Promise((resolve) => setTimeout(resolve, 1500));
-		status = await fetch(wrangler.url + "/status");
-		expect(await status.json()).toBe(true);
-		res = await fetch(wrangler.url + "/fetch");
-		expect(await res.text()).toBe("Blah! FOO");
-	});
+			await fetch(wrangler.url + "/start");
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			// 			await new Promise((resolve) => setTimeout(resolve, 1500));
+			status = await fetch(wrangler.url + "/status");
+			expect(await status.json()).toBe(true);
+			res = await fetch(wrangler.url + "/fetch");
+			expect(await res.text()).toBe("Blah! FOO");
+		});
 
-	// // docker isn't installed by default on windows/macos runners
-	// it("should print rebuild containers hotkey", async () => {
-	// 	wrangler.pty.kill();
-	// 	expect(wrangler.stdout).toContain("rebuild container");
-	// });
-});
+		// // docker isn't installed by default on windows/macos runners
+		// it("should print rebuild containers hotkey", async () => {
+		// 	wrangler.pty.kill();
+		// 	expect(wrangler.stdout).toContain("rebuild container");
+		// });
+	}
+);
 // todo cleanup containers after
 
 const getContainerIds = () => {
