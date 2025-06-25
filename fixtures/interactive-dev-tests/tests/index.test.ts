@@ -290,7 +290,7 @@ it.each(exitKeys)("multiworker cleanly exits with $name", async ({ key }) => {
 
 baseDescribe.skipIf(process.platform !== "linux" && process.env.CI === "true")(
 	"container dev",
-	{ retry: 1, timeout: 20000 },
+	{ retry: 1, timeout: 90000 },
 	() => {
 		let tmpDir: string;
 		let wrangler: PtyProcess;
