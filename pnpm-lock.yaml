@@ -374,8 +374,8 @@ importers:
         version: 0.10.1-pre.11
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: ^4.20250617.0
-        version: 4.20250617.0
+        specifier: ^4.20250620.0
+        version: 4.20250620.0
       '@fixture/shared':
         specifier: workspace:*
         version: link:../shared
