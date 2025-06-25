@@ -4,7 +4,7 @@ on:
 
 permissions:
   contents: read
-  # pull-request:write permission needed so that the workflow can comment on PRs
+  # pull-request:write permission needed so that the workflow can set labels to PRs
   pull-requests: write
 
 jobs:
