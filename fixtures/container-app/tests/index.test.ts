@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runWranglerDev } from "../../shared/src/run-wrangler-long-lived";
 
 describe
-	.skipIf(process.env.platform !== "linux" && process.env.CI === "true")
+	.skipIf(process.platform !== "linux" && process.env.CI === "true")
 	.sequential.each([
 		{ source: "dockerfile (built)", config: "wrangler.jsonc" },
 		{
