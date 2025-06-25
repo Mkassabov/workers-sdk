@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04-arm, windows-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repo
@@ -120,7 +120,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-latest
             os_name: Linux
             node_version: 20.19.1
             filter: '--filter="./tools" --filter="./packages/*" --filter="./fixtures/*" --filter="./packages/vite-plugin-cloudflare/playground"'
@@ -128,7 +128,7 @@ jobs:
             os_name: Windows
             node_version: 20.19.1
             filter: '--filter="./packages/*" --filter="./fixtures/*" --filter="./packages/vite-plugin-cloudflare/playground"'
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-latest
             os_name: v22, Linux
             node_version: 22
             filter: '--filter="./packages/*" --filter="!./packages/kv-asset-handler"'
