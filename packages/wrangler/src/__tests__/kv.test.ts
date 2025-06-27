@@ -1617,7 +1617,7 @@ describe("wrangler", () => {
 				writeFileSync("./keys.json", JSON.stringify(keyValues));
 				await expect(
 					runWrangler(
-						`kv bulk put --remote --namespace-id some-namespace-id keys.json`
+						`kv bulk put --namespace-id some-namespace-id keys.json`
 					)
 				).rejects.toThrowErrorMatchingInlineSnapshot(`
 					[Error: Unexpected JSON input from "keys.json".
@@ -1661,7 +1661,7 @@ describe("wrangler", () => {
 				writeFileSync("./keys.json", JSON.stringify(keyValues));
 				const requests = mockPutRequest("some-namespace-id", keyValues);
 				await runWrangler(
-					`kv bulk put --remote --namespace-id some-namespace-id keys.json`
+					`kv bulk put --namespace-id some-namespace-id keys.json`
 				);
 				expect(requests.count).toEqual(1);
 
