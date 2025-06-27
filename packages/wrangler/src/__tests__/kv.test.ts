@@ -1616,9 +1616,7 @@ describe("wrangler", () => {
 
 				writeFileSync("./keys.json", JSON.stringify(keyValues));
 				await expect(
-					runWrangler(
-						`kv bulk put --namespace-id some-namespace-id keys.json`
-					)
+					runWrangler(`kv bulk put --namespace-id some-namespace-id keys.json`)
 				).rejects.toThrowErrorMatchingInlineSnapshot(`
 					[Error: Unexpected JSON input from "keys.json".
 					Each item in the array should be an object that matches:
